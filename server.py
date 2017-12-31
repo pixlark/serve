@@ -7,7 +7,7 @@ import time
 
 sock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
 sock.setsockopt(sk.SOL_SOCKET, sk.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', 5005))
+sock.bind(('0.0.0.0', 5006))
 sock.listen(5)
 
 clients = []

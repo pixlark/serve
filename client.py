@@ -4,7 +4,7 @@ import socket as sk
 import threading as th
 
 ip = '127.0.0.1'
-port = 5005
+port = 5006
 buffer_size = 1024
 
 sock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
