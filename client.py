@@ -2,10 +2,13 @@
 
 import socket as sk
 import threading as th
+import configparser as cr
 
-ip = '127.0.0.1'
-port = 5006
-buffer_size = 1024
+config = cr.ConfigParser()
+config.read('cfg')
+
+ip = config['client']['chat_server']
+port = int(config['client']['port'])
 
 sock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
 sock.connect((ip, port))

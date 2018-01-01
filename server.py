@@ -4,11 +4,18 @@ import errno
 import socket as sk
 import threading as th
 import time
+import configparser as cr
+
+config = cr.ConfigParser()
+config.read('cfg')
+port = int(config['server']['port'])
+print('Loaded configuration')
 
 sock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
 sock.setsockopt(sk.SOL_SOCKET, sk.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', 5006))
+sock.bind(('0.0.0.0', port))
 sock.listen(5)
+print('Listening on port', port)
 
 clients = []
 threads = []
