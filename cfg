@@ -5,3 +5,4 @@ port=5006
 
 [server]
 port=5006
+timeout=3.0
