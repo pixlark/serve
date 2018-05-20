@@ -6,80 +6,98 @@ import threading as th
 import time
 import configparser as cr
 import select as sl
+import json
 
-config = cr.ConfigParser()
-config.read('cfg')
-port = int(config['server']['port'])
-print('Loaded configuration')
-
-sk.setdefaulttimeout(float(config['server']['timeout']))
-print('Timeout set to', config['server']['timeout'])
-
-sock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
-sock.setsockopt(sk.SOL_SOCKET, sk.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', port))
-sock.listen(5)
-print('Listening on port', port)
-
+sock = None
 clients = []
 threads = []
-
 running = True
 
-def manage_client(client, addr, username):
+class Client:
+	def __init__(self, tup, username="undeclared"):
+		self.connection = tup[0]
+		self.address = tup[1]
+		self.username = username
+
+def data_in_socket(socket):
+	return len(sl.select([socket], [], [])) > 0
+		
+def manage_client(client):
+	global clients
 	while True:
-		if len(sl.select([client], [], [])[0]) > 0:
-			data = client.recv(1024)
+		if data_in_socket(client.connection):
+			data = client.connection.recv(1024)
 		else:
 			time.sleep(1)
 			continue
-		print('HEADER', data[:4])
-		if data[:4] == b'MESG':
-			print(username.decode() + ':', data[4:].decode())
+		print("{0} : ".format(data[:4]), end='')
+		if   data[:4] == b'MESG':
+			print(client.username.decode() + ':', data[4:].decode())
 			for c in clients:
-				if c[1] == addr:
+				if c.address == client.address:
 					continue
-				c[0].send(data[:4] + username + b': ' + data[4:])
-				print('Forwarded to', c[2].decode())
+				c.connection.send(b'\0' + b'MESG' + client.username + b':' + data[4:])
+				print('Forwarded to', c.username.decode())
 		elif data[:4] == b'QUIT':
-			print(username.decode(), 'has quit')
-			ri = -1
-			for i in range(len(clients)):
-				if clients[i][1] == addr:
-					ri = i
-				else:
-					clients[i][0].send(b'QUIT' + username)
-			if (ri == -1):
-				raise RuntimeError('Something went wrong')
-			del clients[ri]
+			print(client.username.decode(), 'has quit')
+			clients = [c for c in clients if c.address != client.address]
 			return
 
 def listen_for_new_clients():
+	global clients
 	while running:
 		try:
-			clients.append(sock.accept())
+			client = Client(sock.accept())
 		except sk.timeout:
 			continue
-		username= clients[-1][0].recv(1024)[4:]
-		clients[-1] = (clients[-1][0], clients[-1][1], username)
-		print(clients[-1][2], 'has joined')
+		client.username = client.connection.recv(1024)[4:]
+		print(client.username, 'has joined')
+		print(json.dumps([c.username.decode() for c in clients]))
+		client.connection.send(b'LIST' +
+							   json.dumps([c.username.decode() for c in clients])
+							   .encode())
+		clients.append(client)
 		for c in clients:
-			c[0].send(b'JOIN' + username)
-		threads.append(th.Thread(target=manage_client, args=clients[-1], daemon=True))
+			c.connection.send(b'\0' + b'JOIN' + client.username)
+		threads.append(th.Thread(target=manage_client, args=(client,), daemon=True))
 		threads[-1].start()
 
-listen_thread = th.Thread(target=listen_for_new_clients)
-listen_thread.start()
+def main():
+	global sock
+	global clients
+	global running
 
-while True:
-	i = input('')
-	if i.lower() == 'quit' or i.lower() == 'q':
-		print('Shutting down...')
-		running = False
-		for c in clients:
-			c[0].send('DOWN'.encode())
-		break
+	# Load configuration
+	config = cr.ConfigParser()
+	config.read('cfg')
+	port = int(config['server']['port'])
+	print('Loaded configuration')
+
+	# Start listening
+	sk.setdefaulttimeout(float(config['server']['timeout']))
+	print('Timeout set to', config['server']['timeout'])
+
+	sock = sk.socket(sk.AF_INET, sk.SOCK_STREAM)
+	sock.setsockopt(sk.SOL_SOCKET, sk.SO_REUSEADDR, 1)
+	sock.bind(('0.0.0.0', port))
+	sock.listen(5)
+	print('Listening on port', port)
+
+	listen_thread = th.Thread(target=listen_for_new_clients)
+	listen_thread.start()
+
+	# Wait for commands
+	while True:
+		i = input('')
+		if i.lower() == 'quit' or i.lower() == 'q':
+			print('Shutting down...')
+			running = False
+			for c in clients:
+				c[0].send(b'\0' + b'DOWN')
+			break
 	
-for c in clients:
-	c[0].close()
-
+	for c in clients:
+		c[0].close()
+	
+if __name__ == "__main__":
+	main()
